@@ -9,6 +9,11 @@ Please note that you cannot initiate a freetext message with WhatsappAPI. Instea
 It is a Ruby port of https://github.com/chatwithio/php-360degree-template-message-send improved with 
 header, footer and buttons parameters.
 
+You can get full documentation from the following sources in order to improve the GEM
+
+- https://docs.360dialog.com/docs/whatsapp-api/onboarding-guide-summary
+- https://developers.facebook.com/docs/whatsapp/api/messages/message-templates/interactive-message-templates
+
 ## Getting a 360degree API Key
 
 You can get one from here: https://tochat.be
