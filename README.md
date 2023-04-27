@@ -6,6 +6,9 @@ The purspose of this gem is to send text based template messages via 360 degrees
 
 Please note that you cannot initiate a freetext message with WhatsappAPI. Instead, you must use a pre-approved template.
 
+It is a Ruby port of https://github.com/chatwithio/php-360degree-template-message-send improved with 
+header, footer and buttons parameters.
+
 ## Getting a 360degree API Key
 
 You can get one from here: https://tochat.be
