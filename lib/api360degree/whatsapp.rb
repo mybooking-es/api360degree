@@ -20,6 +20,9 @@ module Api360degree
     API_CONTACT_ENDPOINT = 'https://waba.360dialog.io/v1/contacts'
     API_MESSAGES_ENDPOINT = 'https://waba.360dialog.io/v1/messages'
 
+    API_CONTACT_ENDPOINT_V2 = 'https://waba-v2.360dialog.io/contacts'
+    API_MESSAGES_ENDPOINT_V2 = 'https://waba-v2.360dialog.io/messages'
+
     #
     # Constructor
     #
@@ -58,7 +61,30 @@ module Api360degree
                       placeholders,
                       template,
                       language,
-                      namespace)
+                      namespace,
+                      version=:v2)
+
+      case version
+      when :v1
+        send_whatsapp_v1(to, placeholders, template, language, namespace)
+      when :v2
+        send_whatsapp_v2(to, placeholders, template, language, namespace)
+      else
+        raise WhatsAppException.new("Version #{version} not supported")
+      end
+
+    end
+
+    private
+
+    #
+    # Send a Whatsapp using 360 degree V1
+    #
+    def send_whatsapp_v1(to,
+                         placeholders,
+                         template,
+                         language,
+                         namespace)
 
       # = Check contact
       self.check_contact(to)
@@ -84,9 +110,57 @@ module Api360degree
       # = Send the message
 
       # - Create Faraday instance
-      conn = Faraday.new(API_MESSAGES_ENDPOINT)# do |faraday|
-              # faraday.response :json
-             #end
+      conn = Faraday.new(API_MESSAGES_ENDPOINT)
+
+      # - Make a post the the connection
+      response = conn.post do |req|
+            req.headers['Content-Type'] = 'application/json'
+            req.headers['D360-API-KEY'] = @api_key
+            req.body = payload.to_json
+      end
+
+      # - Check response (400 is a error with a errors in hash)
+      raise WhatsAppException.new("Error sending message to #{to}",
+                                  response.body) unless response.status == 200 or response.status == 201 or response.status == 400
+
+      [(response.status == 200 or response.status == 201), JSON.parse(response.body)]
+    end
+
+    #
+    # Send a Whatsapp using 360 degree V2
+    #
+    def send_whatsapp_v2(to,
+                         placeholders,
+                         template,
+                         language,
+                         namespace)
+
+      # = Build payload
+
+      components = build_parameters(placeholders)
+
+      payload = {
+            "messaging_product": "whatsapp",
+            "recipient_type": "individual",
+            "to" => to,
+            "type" => "template",
+            "template" => {
+                "namespace" => namespace,
+                "language" => {
+                    "policy" => "deterministic",
+                    "code" => language
+                },
+                "name" => template,
+                "components" => components
+            }
+      }
+
+      p "payload: #{payload.inspect}"
+
+      # = Send the message
+
+      # - Create Faraday instance
+      conn = Faraday.new(API_MESSAGES_ENDPOINT_V2)
 
       # - Make a post the the connection
       response = conn.post do |req|
@@ -139,8 +213,9 @@ module Api360degree
             req.body = payload.to_json
       end
 
+
       # - Process response
-      raise WhatsAppException.new("Error checking contact #{contact}",
+      raise WhatsAppException.new("Error checking contact #{contact} #{response.status}",
                                   response.body) unless response.status == 200 or response.status == 201
 
       # Return the response body
