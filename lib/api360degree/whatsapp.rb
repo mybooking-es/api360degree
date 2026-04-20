@@ -22,6 +22,7 @@ module Api360degree
 
     API_CONTACT_ENDPOINT_V2 = 'https://waba-v2.360dialog.io/contacts'
     API_MESSAGES_ENDPOINT_V2 = 'https://waba-v2.360dialog.io/messages'
+    API_MEDIA_ENDPOINT_V2 = 'https://waba-v2.360dialog.io/media'
 
     #
     # Constructor
@@ -75,7 +76,133 @@ module Api360degree
 
     end
 
+    #
+    # Upload a media file to 360dialog (v2)
+    #
+    # The file is uploaded and a media_id is returned that can be used
+    # in send_document, send_image, etc.
+    #
+    # == Parameters::
+    #
+    # file_path:: [String] Path to the file
+    # mime_type:: [String] MIME type (e.g. 'application/pdf', 'image/jpeg')
+    #
+    # == Returns::
+    #
+    # [String] The media_id
+    #
+    # == Throws::
+    #
+    # [WhatsAppException] if error calling API
+    #
+    def upload_media(file_path, mime_type)
+      raise WhatsAppException.new("File not found: #{file_path}", nil) unless File.exist?(file_path)
+
+      conn = Faraday.new(API_MEDIA_ENDPOINT_V2) do |f|
+        f.request :multipart
+        f.adapter Faraday.default_adapter
+      end
+
+      response = conn.post do |req|
+        req.headers['D360-API-KEY'] = @api_key
+        req.body = {
+          'messaging_product' => 'whatsapp',
+          'type' => mime_type,
+          'file' => Faraday::Multipart::FilePart.new(file_path, mime_type, File.basename(file_path))
+        }
+      end
+
+      raise WhatsAppException.new("Error uploading media: #{response.status}",
+                                  response.body) unless response.status == 200 || response.status == 201
+
+      result = JSON.parse(response.body)
+      result['id']
+    end
+
+    #
+    # Send a document message via 360dialog (v2)
+    #
+    # == Parameters::
+    #
+    # to:: [String] Phone number
+    # media_id:: [String] Media ID obtained from upload_media
+    # filename:: [String] Filename to display to the recipient
+    # caption:: [String, nil] Optional caption text
+    #
+    # == Returns::
+    #
+    # [Array] [success_boolean, response_hash]
+    #
+    # == Throws::
+    #
+    # [WhatsAppException] if error calling API
+    #
+    def send_document(to, media_id, filename, caption = nil)
+      document = { 'id' => media_id, 'filename' => filename }
+      document['caption'] = caption if caption
+      send_media_message(to, 'document', document)
+    end
+
+    #
+    # Send an image message via 360dialog (v2)
+    #
+    # == Parameters::
+    #
+    # to:: [String] Phone number
+    # media_id:: [String] Media ID obtained from upload_media
+    # caption:: [String, nil] Optional caption text
+    #
+    # == Returns::
+    #
+    # [Array] [success_boolean, response_hash]
+    #
+    # == Throws::
+    #
+    # [WhatsAppException] if error calling API
+    #
+    def send_image(to, media_id, caption = nil)
+      image = { 'id' => media_id }
+      image['caption'] = caption if caption
+      send_media_message(to, 'image', image)
+    end
+
     private
+
+    #
+    # Send a media message via 360dialog (v2)
+    #
+    # == Parameters::
+    #
+    # to:: [String] Phone number
+    # media_type:: [String] Type: 'document', 'image', 'video', 'audio'
+    # media_payload:: [Hash] Media-specific payload (id, filename, caption, etc.)
+    #
+    # == Returns::
+    #
+    # [Array] [success_boolean, response_hash]
+    #
+    def send_media_message(to, media_type, media_payload)
+      payload = {
+        'messaging_product' => 'whatsapp',
+        'recipient_type' => 'individual',
+        'to' => to,
+        'type' => media_type,
+        media_type => media_payload
+      }
+
+      conn = Faraday.new(API_MESSAGES_ENDPOINT_V2)
+
+      response = conn.post do |req|
+        req.headers['Content-Type'] = 'application/json'
+        req.headers['D360-API-KEY'] = @api_key
+        req.body = payload.to_json
+      end
+
+      raise WhatsAppException.new("Error sending #{media_type} to #{to}",
+                                  response.body) unless response.status == 200 || response.status == 201
+
+      [true, JSON.parse(response.body)]
+    end
 
     #
     # Send a Whatsapp using 360 degree V1
@@ -230,10 +357,20 @@ module Api360degree
     #
     # placeholders:: [Hash]
     #
-    # == Example
+    # == Example (text header)
     #
     #    {header: ["Customer Name"],
     #     body: ["Order Number"]}
+    #
+    # == Example (document header)
+    #
+    #    {header: { type: 'document', document: { id: 'media_id', filename: 'factura.pdf' } },
+    #     body: ["Customer Name", "F-2026-001"]}
+    #
+    # == Example (image header)
+    #
+    #    {header: { type: 'image', image: { id: 'media_id' } },
+    #     body: ["Customer Name"]}
     #
     # == Returns::
     #
@@ -245,11 +382,24 @@ module Api360degree
       components = []
 
       # - Header parameters
-      if placeholders.has_key?(:header) and placeholders[:header].is_a?(Array)
-        components << {
-                        "type" => "header",
-                        "parameters" => placeholders[:header].map { |placeholder| {type: 'text', text: placeholder.to_s} }
-                      }
+      if placeholders.has_key?(:header)
+        header = placeholders[:header]
+        if header.is_a?(Hash) && header.has_key?(:type)
+          # Media header (document, image, video)
+          media_type = header[:type]
+          parameter = { 'type' => media_type }
+          parameter[media_type] = header[media_type.to_sym] if header.has_key?(media_type.to_sym)
+          components << {
+                          "type" => "header",
+                          "parameters" => [parameter]
+                        }
+        elsif header.is_a?(Array)
+          # Text header (backwards compatible)
+          components << {
+                          "type" => "header",
+                          "parameters" => header.map { |placeholder| {type: 'text', text: placeholder.to_s} }
+                        }
+        end
       end
       # - Body parameters
       if placeholders.has_key?(:body) and placeholders[:body].is_a?(Array)
