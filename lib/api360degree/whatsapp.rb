@@ -20,6 +20,14 @@ module Api360degree
     API_CONTACT_ENDPOINT = 'https://waba.360dialog.io/v1/contacts'
     API_MESSAGES_ENDPOINT = 'https://waba.360dialog.io/v1/messages'
 
+    # Button sub_types that take parameters, and the type of their parameter.
+    # WhatsApp sends each one as {type: <type>, <type>: <value>}
+    BUTTON_PARAMETER_TYPES = {
+      'url' => 'text',
+      'quick_reply' => 'text',
+      'copy_code' => 'coupon_code'
+    }.freeze
+
     API_CONTACT_ENDPOINT_V2 = 'https://waba-v2.360dialog.io/contacts'
     API_MESSAGES_ENDPOINT_V2 = 'https://waba-v2.360dialog.io/messages'
     API_MEDIA_ENDPOINT_V2 = 'https://waba-v2.360dialog.io/media'
@@ -419,13 +427,14 @@ module Api360degree
       # - Buttons
       if placeholders.has_key?(:buttons) and placeholders[:buttons].is_a?(Hash)
         placeholders[:buttons].each do |key, value|
-          next unless value.has_key?(:sub_type) and ['url','quick_reply'].include?(value[:sub_type])
+          next unless value.has_key?(:sub_type) and BUTTON_PARAMETER_TYPES.has_key?(value[:sub_type])
           next unless value.has_key?(:parameters) and value[:parameters].is_a?(Array)
+          parameter_type = BUTTON_PARAMETER_TYPES[value[:sub_type]]
           components << {
                           "type" => "button",
                           "sub_type" => value[:sub_type],
                           "index" => key,
-                          "parameters" => value[:parameters].map { |placeholder| {type: 'text', text: placeholder.to_s} }
+                          "parameters" => value[:parameters].map { |placeholder| {type: parameter_type, parameter_type.to_sym => placeholder.to_s} }
                         }
         end
       end
