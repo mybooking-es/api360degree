@@ -417,15 +417,24 @@ module Api360degree
       end
 
       # - Buttons
+      #
+      #   url / quick_reply: the parameters are text.
+      #   copy_code: the button copies a code; its only parameter is the code
+      #   (type coupon_code), e.g. {buttons: {0 => {sub_type: 'copy_code', parameters: ['ABC123']}}}
       if placeholders.has_key?(:buttons) and placeholders[:buttons].is_a?(Hash)
         placeholders[:buttons].each do |key, value|
-          next unless value.has_key?(:sub_type) and ['url','quick_reply'].include?(value[:sub_type])
+          next unless value.has_key?(:sub_type) and ['url','quick_reply','copy_code'].include?(value[:sub_type])
           next unless value.has_key?(:parameters) and value[:parameters].is_a?(Array)
+          parameters = if value[:sub_type] == 'copy_code'
+                         value[:parameters].first(1).map { |placeholder| {type: 'coupon_code', coupon_code: placeholder.to_s} }
+                       else
+                         value[:parameters].map { |placeholder| {type: 'text', text: placeholder.to_s} }
+                       end
           components << {
                           "type" => "button",
                           "sub_type" => value[:sub_type],
                           "index" => key,
-                          "parameters" => value[:parameters].map { |placeholder| {type: 'text', text: placeholder.to_s} }
+                          "parameters" => parameters
                         }
         end
       end
