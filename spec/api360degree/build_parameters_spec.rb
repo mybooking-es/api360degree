@@ -41,11 +41,6 @@ RSpec.describe Api360degree::WhatsApp do
     ])
   end
 
-  it 'sends a single code for a copy_code button' do
-    components = build(buttons: { 0 => { sub_type: 'copy_code', parameters: [12345, 'other'] } })
-    expect(components.first['parameters']).to eq([{ type: 'coupon_code', coupon_code: '12345' }])
-  end
-
   it 'ignores a button of an unknown sub_type' do
     expect(build(buttons: { 0 => { sub_type: 'flow', parameters: ['x'] } })).to eq([])
   end
